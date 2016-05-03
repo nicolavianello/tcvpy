@@ -1,12 +1,12 @@
 """
-Fast Reciprocating Probe
+
+Fast Reciprocating Probe data and profiles
 
 Written by Nicola Vianello
+
 """
 
-import os
 import numpy as np
-import xray
 import tcv
 import eqtools
 
@@ -18,8 +18,8 @@ class FastRP(object):
 
     """
     
-    @classmethod
-    def _getNodeName(shot):
+    @staticmethod
+    def _getNodeName(shot, remote=False):
         """
         Class method to obtain the name of the node in the 
         desidered shot number.
@@ -38,7 +38,12 @@ class FastRP(object):
             saved into the node.
 
         """
-        conn = tcv.shot(shot)
+        if remote:
+            Server='localhost:1600'
+        else:
+            Server='tcvdata.epfl.ch'
+
+        conn = tcv.shot(shot, server=Server)
         _string = 'getnci(getnci(\\TOP.DIAGZ.MEASUREMENTS.UCSDFP,"MEMBER_NIDS")'\
                   ',"NODE_NAME")'
         nodeName = conn.tdi(_string)
@@ -49,7 +54,7 @@ class FastRP(object):
         return nodeName
     
     @staticmethod
-    def iSTimefromshot(shot, stroke=1):
+    def iSTimefromshot(shot, stroke=1, remote=False):
         """
         Return the ion saturation current from shot
         with the proper time base
@@ -59,19 +64,31 @@ class FastRP(object):
             Shot Number
         stroke: int. Default 1
             Choose between the 1st or 2nd stroke
+        remote: Boolean. Default False
+            If set it connect to 'localhost:1600' supposing
+            an ssh forwarding is taking place
         Return:
         ----------
         iSat: xarray Dataarray
             Return the collected ion saturation current
             including its time and area
+        Example:
+        --------
+        >>> from tcv.diag.frp import FastRP
+        >>> iSat = FastRP.iSfromshot(51080, stroke=1)
+        >>> matplotlib.pylab.plot(iSat.time, iSat.values)
         """
         # assume we are blind and found the name appropriately
-        _name = FastRP._getNodeName(shot)
-        _nameS = np.asarray([n[:-2] for n in _name])
+        _name = FastRP._getNodeName(shot, remote=remote)
+        _nameS = np.asarray([n[:-3] for n in _name])
         # these are all the names of the ion saturation current
         # signal
         _IsName = _name[np.where(_nameS == 'IS')]
-        conn = tcv.shot(shot)
+        if remote:
+            Server='localhost:1600'
+        else:
+            Server='tcvdata.epfl.ch'
+        conn = tcv.shot(shot, server=Server)
         if stroke == 1:
             iSat = conn.tdi(r'\FP'+_IsName[0])
         else:
@@ -85,12 +102,13 @@ class FastRP(object):
         conn.close
         return iSat
 
-    @statimethod
-    def iSRhofromshot(shot, stroke=1, npoint=20):
+    @staticmethod
+    def iSRhofromshot(shot, stroke=1, npoint=20,
+                      trange=None, remote=False):
 
         """
-        Return the ion saturation current from shot
-        with the proper time base
+        Return the ion saturation current profile
+        as a function of normalized poloidal flux
         Parameters:
         ----------
         shot: int
@@ -99,6 +117,13 @@ class FastRP(object):
             Choose between the 1st or 2nd stroke
         npoint: int. Default 20
             Number of point in space 
+        trange: 2D array or list
+            eventually we can use a limited
+            number of point (for example just entering
+            the plasma). Default it uses all the stroke
+        remote: Boolean. Default False
+            If set it connect to 'localhost:1600' supposing
+            an ssh forwarding is taking place
         Return:
         -------
         rho: Normalized poloidal flux coordinate
@@ -114,11 +139,16 @@ class FastRP(object):
 
         # get the appropriate iSat
         iSat = FastRP.iSTimefromshot(shot, stroke=stroke,
-                                     npoint=npoint)
+                                     remote=remote)
+        # now collect the position
+        if remote:
+            Server='localhost:1600'
+        else:
+            Server='tcvdata.epfl.ch'
         # open the connection
-        conn = tcv.shot(shot)
+        conn = tcv.shot(shot, server=Server)
         # now determine the radial location
-        if stroke ==1:
+        if stroke == 1:
             cPos = conn.tdi(r'\fpcalpos_1')
         else:
             cPos = conn.tdi(r'\fpcalpos_2')
@@ -133,4 +163,22 @@ class FastRP(object):
         # these are the timing
         tN = cPos.where(cPos/1e2 < rMax).dim_0.values
         tN = tN[~np.isnan(rN.values)]
-        iN = iN.val
+        # this is the ion saturation current in this interval
+        iN = iN[~np.isnan(rN.Values)]
+        rN = rN.values[~np.isnan(rN.values)]
+        # now in case we also set a min-max of time we limit to this interval
+        if trange is not None:
+            trange = np.atleast_1d(trange)
+            _idx = ((tN>=trange[0]) & (tN <= trange[1]))
+            rN = rN[_idx]
+            iN = iN[_idx]
+            tN = tN[_idx]
+        # now sort along rN and average corrispondingly
+        iN = iN[np.argsort(rN)]
+        rN = rN[np.argsort(rN)]
+        iSliced = np.array_split(iN, npoint)
+        rSliced = np.array_splint(rN, npoint)
+        iOut = np.asarray([np.nanmean(k) for k in iSliced])
+        iErr = np.asarray([np.nanstd(k) for k in iSliced])
+        rOut = np.asarray([np.nanmean(k) for k in rSliced])
+        return rOut, iOut, iErr
