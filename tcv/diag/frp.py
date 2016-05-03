@@ -10,18 +10,19 @@ import numpy as np
 import tcv
 import eqtools
 
+
 class FastRP(object):
     """
 
     Load the signals from the Fast Reciprocating Probe
-    Diagnostic. 
+    Diagnostic.
 
     """
-    
+
     @staticmethod
     def _getNodeName(shot, remote=False):
         """
-        Class method to obtain the name of the node in the 
+        Class method to obtain the name of the node in the
         desidered shot number.
 
         Parameters:
@@ -39,20 +40,19 @@ class FastRP(object):
 
         """
         if remote:
-            Server='localhost:1600'
+            Server = 'localhost:1600'
         else:
-            Server='tcvdata.epfl.ch'
+            Server = 'tcvdata.epfl.ch'
 
         conn = tcv.shot(shot, server=Server)
         _string = 'getnci(getnci(\\TOP.DIAGZ.MEASUREMENTS.UCSDFP,"MEMBER_NIDS")'\
                   ',"NODE_NAME")'
         nodeName = conn.tdi(_string)
-        # transform in the 
         nodeName = np.core.defchararray.strip(nodeName.values)
         # close the connection
         conn.close
         return nodeName
-    
+
     @staticmethod
     def iSTimefromshot(shot, stroke=1, remote=False):
         """
@@ -85,9 +85,9 @@ class FastRP(object):
         # signal
         _IsName = _name[np.where(_nameS == 'IS')]
         if remote:
-            Server='localhost:1600'
+            Server = 'localhost:1600'
         else:
-            Server='tcvdata.epfl.ch'
+            Server = 'tcvdata.epfl.ch'
         conn = tcv.shot(shot, server=Server)
         if stroke == 1:
             iSat = conn.tdi(r'\FP'+_IsName[0])
@@ -95,9 +95,13 @@ class FastRP(object):
             iSat = conn.tdi(r'\FPis1_2')
         # eventually combine the two
         # rename with time as dimension
-        iSat=iSat.rename({'dim_0':'time'})
+        iSat = iSat.rename({'dim_0': 'time'})
         # add in the attributes also the area
         iSat.area = conn.tdi(r'\AM4').values
+        # detrend the costant in the first part of the
+        # stroke
+        iSat -= iSat.where(iSat.time < iSat.time.min() +
+                           0.01).mean(dim='time')
         # close the connection
         conn.close
         return iSat
@@ -116,7 +120,7 @@ class FastRP(object):
         stroke: int. Default 1
             Choose between the 1st or 2nd stroke
         npoint: int. Default 20
-            Number of point in space 
+            Number of point in space
         trange: 2D array or list
             eventually we can use a limited
             number of point (for example just entering
@@ -142,9 +146,9 @@ class FastRP(object):
                                      remote=remote)
         # now collect the position
         if remote:
-            Server='localhost:1600'
+            Server = 'localhost:1600'
         else:
-            Server='tcvdata.epfl.ch'
+            Server = 'tcvdata.epfl.ch'
         # open the connection
         conn = tcv.shot(shot, server=Server)
         # now determine the radial location
@@ -159,26 +163,32 @@ class FastRP(object):
         # this is the region where it is
         # within the grid of the flux the position
         rN = cPos.where(cPos/1e2 < rMax)
-        iN = iSat.where(cPos/1e2 < rMax).values
+        iN = iSat.where(cPos.values/1e2 < rMax).values
         # these are the timing
-        tN = cPos.where(cPos/1e2 < rMax).dim_0.values
+        tN = cPos.where(cPos.values/1e2 < rMax).dim_0.values
         tN = tN[~np.isnan(rN.values)]
         # this is the ion saturation current in this interval
-        iN = iN[~np.isnan(rN.Values)]
-        rN = rN.values[~np.isnan(rN.values)]
+        iN = iN[~np.isnan(rN.values)]
+        # rN should be in rho
+        rN = rN.values[~np.isnan(rN.values)]/1e2
+        # now translate rN in rho
+        rho = np.zeros(rN.size)
+        for r, t, i in zip(rN, tN, range(tN.size)):
+            rho[i] = eq.rz2psinorm(r, 0, t, sqrt=True)
         # now in case we also set a min-max of time we limit to this interval
         if trange is not None:
             trange = np.atleast_1d(trange)
-            _idx = ((tN>=trange[0]) & (tN <= trange[1]))
-            rN = rN[_idx]
+            _idx = ((tN >= trange[0]) & (tN <= trange[1]))
+            rho = rho[_idx]
             iN = iN[_idx]
             tN = tN[_idx]
         # now sort along rN and average corrispondingly
-        iN = iN[np.argsort(rN)]
-        rN = rN[np.argsort(rN)]
+        iN = iN[np.argsort(rho)]
+        rN = rho[np.argsort(rho)]
         iSliced = np.array_split(iN, npoint)
-        rSliced = np.array_splint(rN, npoint)
+        rSliced = np.array_split(rN, npoint)
         iOut = np.asarray([np.nanmean(k) for k in iSliced])
         iErr = np.asarray([np.nanstd(k) for k in iSliced])
         rOut = np.asarray([np.nanmean(k) for k in rSliced])
+        conn.close
         return rOut, iOut, iErr
