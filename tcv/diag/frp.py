@@ -299,8 +299,10 @@ class FastRP(object):
         for n in vf.Probe.values:
             y = vf.sel(Probe=n).values
             x = rho.sel(r=p[n]).values
-        
-        
+            out = FastRP._getprofile(x, y, npoint=npoint)
+            dout[n] = out
+        return dout
+    
     @staticmethod
     def rhofromshot(shot, stroke=1, r=None,
                     remote=False):
@@ -387,15 +389,19 @@ class FastRP(object):
         return data
 
     @staticmethod
-    def _getprofile(x, **kwargs):
+    def _getprofile(x, y, npoint=20):
         """
         Given x and r compute the profile with the given
         number of point and 
 
         """
-        rho = kwargs.get('rho', None)
-        npoint = kwargs.get('npoint', 20)
-        if rho is None:
-            print 'You do not specify correct rho'
-            return -1
-        
+        y = y[np.argsort(x)]
+        x = x[np.argsort(x)]
+        yS = np.array_split(y, npoint)
+        xS = np.array_split(x, npoint)
+        yO = np.asarray([np.nanmean(k) for k in yS])
+        xO = np.asarray([np.nanmean(k) for k in xS])
+        eO = np.asarray([np.nanstd(k) for k in yS])
+        data = xray.DataArray(yO, coords={'rho':xO})
+        data.attrs['err'] = eO
+        return data
