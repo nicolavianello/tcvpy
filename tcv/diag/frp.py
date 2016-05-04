@@ -11,6 +11,7 @@ import tcv
 import eqtools
 import xray
 
+
 class FastRP(object):
     """
 
@@ -144,54 +145,37 @@ class FastRP(object):
         # get the appropriate iSat
         iSat = FastRP.iSTimefromshot(shot, stroke=stroke,
                                      remote=remote)
-        # now collect the position
-        if remote:
-            Server = 'localhost:1600'
+
+        # get the appropriate rho
+        rho = FastRP.rhofromshot(shot, stroke=stroke,
+                                 remote=remote)
+        # now we need to limit to the tMin and tMax
+        # this is true both in case it is given or
+        # in the case we have rho
+        if trange is None:
+            trange = [rho.time.min(), rho.time.max()]
+            iN = iSat.where(((iSat.time >= rho.time.min()) &
+                             (iSat.time <= rho.time.max()))).values
+            iN = iN[~np.isnan(iN)]
+            rN = rho.values
         else:
-            Server = 'tcvdata.epfl.ch'
-        # open the connection
-        conn = tcv.shot(shot, server=Server)
-        # now determine the radial location
-        if stroke == 1:
-            cPos = conn.tdi(r'\fpcalpos_1')
-        else:
-            cPos = conn.tdi(r'\fpcalpos_2')
-        # now determine the time and space where the
-        # position of the probe is within
-        eq = eqtools.TCVLIUQETree(shot)
-        rMax = eq.getRGrid().max()
-        # this is the region where it is
-        # within the grid of the flux the position
-        rN = cPos.where(cPos/1e2 < rMax)
-        iN = iSat.where(cPos.values/1e2 < rMax).values
-        # these are the timing
-        tN = cPos.where(cPos.values/1e2 < rMax).dim_0.values
-        tN = tN[~np.isnan(rN.values)]
-        # this is the ion saturation current in this interval
-        iN = iN[~np.isnan(rN.values)]
-        # rN should be in rho
-        rN = rN.values[~np.isnan(rN.values)]/1e2
-        # now translate rN in rho
-        rho = np.zeros(rN.size)
-        for r, t, i in zip(rN, tN, range(tN.size)):
-            rho[i] = eq.rz2psinorm(r, 0, t, sqrt=True)
-        # now in case we also set a min-max of time we limit to this interval
-        if trange is not None:
+            print 'limiting in time'
             trange = np.atleast_1d(trange)
-            _idx = ((tN >= trange[0]) & (tN <= trange[1]))
-            rho = rho[_idx]
-            iN = iN[_idx]
-            tN = tN[_idx]
+            rN = rho.where(((rho.time >= trange[0]) &
+                            (rho.time <= trange[1]))).values
+            rN = rN[~np.isnan(rN)]
+            iN = iSat.where(((iSat.time >= trange[0]) &
+                             (iSat.time <= trange[1]))).values
+            iN = iN[~np.isnan(iN)]
         # now sort along rN and average corrispondingly
-        iN = iN[np.argsort(rho)]
-        rN = rho[np.argsort(rho)]
+        iN = iN[np.argsort(rN)]
+        rN = rN[np.argsort(rN)]
         iSliced = np.array_split(iN, npoint)
         rSliced = np.array_split(rN, npoint)
         iOut = np.asarray([np.nanmean(k) for k in iSliced])
         iErr = np.asarray([np.nanstd(k) for k in iSliced])
         rOut = np.asarray([np.nanmean(k) for k in rSliced])
-        conn.close
-        data = xray.DataArray(iOut, coords=[('rho', rOut)])
+        data = xray.DataArray(iOut, coords={'rho': rOut})
         data.attrs['err'] = iErr
         data.attrs['units'] = 'A'
         return data
@@ -274,23 +258,49 @@ class FastRP(object):
             an ssh forwarding is taking place
         Return:
         -------
-        rho: Normalized poloidal flux coordinate
-        vf: ion saturation current 2D array
-        err: rms of the signal (considering the space resolution)
+        A dictioary with keys equal to the name of the probe and value an
+        xRay DataArray with coordinates the rho and attributes the error
 
         Example:
         --------
-        >>> rho, iSat, err = iSRhofromshot(51080, stroke=1, npoint=20)
-        >>> matplotlib.pylab.plot(rho, iSat, 'o')
-        >>> matplotlib.pylab.errorbar(rho, iSat, yerr=err, fmt='none')
+        >>> d = VfRhofromshot(51080, stroke=1, npoint=20)
+        >>> matplotlib.pylab.plot(d['VFB_1'].rho, d['VFB_1'].values, 'o')
         """
         # first of all collect the floating potential
         vf = FastRP.VfTimefromshot(shot, stroke=stroke,
                                    remote=remote)
+        # read the probe name and create a dictionary with
+        # probe associated to the
+        rDict = {}
+        for p in vf.Probe.values:
+            if p[3] == 'R':
+                rDict[p] = 0.003
+            else:
+                rDict[p] = 0.
+
         # now create a dictionary which associate the
         # relative position of the probe tip with respect
         # to the calculated position of the front tip
+        rho = FastRP.rhofromshot(shot, stroke=stroke,
+                                 remote=remote, r=0.003)
+        # now for each of the probe we perform the
+        # evaluation of the profile
+        if trange is None:
+            trange = [rho.time.min(), rho.time.max()]
+        # now limit all the signals to the appropriate timing
+        vf = vf[:, ((vf.time >= trange[0]) &
+                    (vf.time <= trange[1]))]
+        rho = rho[:, ((rho.time >= trange[0]) &
+                      (rho.time <= trange[1]))]
 
+        # now we can use the groupby and apply method
+        # of xray
+        dout = {}
+        for n in vf.Probe.values:
+            y = vf.sel(Probe=n).values
+            x = rho.sel(r=p[n]).values
+        
+        
     @staticmethod
     def rhofromshot(shot, stroke=1, r=None,
                     remote=False):
@@ -308,21 +318,22 @@ class FastRP(object):
             If set it connect to 'localhost:1600' supposing
             an ssh forwarding is taking place
         r: Float
-           This can be a floating or an ndarray containing
-           the relative radial distance with respect to the
-           front tip (useful to determine the rho corresponding)
-           to back probes. It is given in [m] with positive
+           This can be a floating or an ndarray or a list
+           containing the relative radial distance with
+           respect to the front tip (useful to determine
+           the rho corresponding to back probes).
+           It is given in [m] with positive
            values meaning the tip is behind the front one
         Return:
         ----------
         rho:xarray DataArray
             Rho, (sqrt(normalized flux)) with dimension time
-            and second dimension if given the relative distance
+            and second dimension, if given, the relative distance
             from the top tip
         Example:
         --------
         >>> from tcv.diag.frp import FastRP
-        >>> rho = FastRP.rhofromshot(51080, stroke=1)
+        >>> rho = FastRP.rhofromshot(51080, stroke=1, r=[0.001, 0.002])
         >>> matplotlib.pylab.plot(vf.time, rho.values)
 
         """
@@ -342,8 +353,15 @@ class FastRP(object):
             cPos = conn.tdi(r'\fpcalpos_2')
         # limit our self to the region where equilibrium
         # is computed
-        rN = cPos.where(cPos/1e2 < rMax)
-        tN = cPos.where(cPos.values/1e2 < rMax).dim_0.values
+        # to avoid the problem of None values if we are
+        # considering also retracted position we distingish
+        if r is None:
+            add = 0
+        else:
+            add = np.atleast_1d(r).max()
+
+        rN = cPos.where((cPos/1e2+add) < rMax)
+        tN = cPos.where((cPos.values/1e2+add) < rMax).dim_0.values
         tN = tN[~np.isnan(rN.values)]
         # rN should be in rho
         rN = rN.values[~np.isnan(rN.values)]/1e2
@@ -351,17 +369,33 @@ class FastRP(object):
         #
         if r is not None:
             r = np.atleast_1d(r)
-            rho = np.zeros((rN.size, r.size+1))
+            rho = np.zeros((r.size+1, rN.size))
             for R, t, i in zip(rN, tN, range(tN.size)):
-                rho[i, :] = eq.rz2psinorm(np.append(R, R+r),
+                rho[:, i] = eq.rz2psinorm(np.append(R, R+r),
                                           np.repeat(0, r.size+1),
                                           t, sqrt=True)
 
-            data = xray.DataArray(rho, coords=[('time', tN), ('r', r)]),
+            data = xray.DataArray(rho, coords=[np.append(0, r), tN],
+                                  dims=['r', 'time'])
         else:
             rho = np.zeros(rN.size)
             for R, t, i in zip(rN, tN, range(tN.size)):
                 rho[i] = eq.rz2psinorm(R, 0, t, sqrt=True)
-            data = xray.DataArray(rho, coords=[('time', tN)])
+            data = xray.DataArray(rho, coords={'time': tN})
 
+        conn.close
         return data
+
+    @staticmethod
+    def _getprofile(x, **kwargs):
+        """
+        Given x and r compute the profile with the given
+        number of point and 
+
+        """
+        rho = kwargs.get('rho', None)
+        npoint = kwargs.get('npoint', 20)
+        if rho is None:
+            print 'You do not specify correct rho'
+            return -1
+        
