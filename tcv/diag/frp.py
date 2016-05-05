@@ -273,7 +273,7 @@ class FastRP(object):
         # probe associated to the
         rDict = {}
         for p in vf.Probe.values:
-            if p[3] == 'R':
+            if p[2] == 'R':
                 rDict[p] = 0.003
             else:
                 rDict[p] = 0.
@@ -298,11 +298,11 @@ class FastRP(object):
         dout = {}
         for n in vf.Probe.values:
             y = vf.sel(Probe=n).values
-            x = rho.sel(r=p[n]).values
+            x = rho.sel(r=rDict[n]).values
             out = FastRP._getprofile(x, y, npoint=npoint)
             dout[n] = out
         return dout
-    
+
     @staticmethod
     def rhofromshot(shot, stroke=1, r=None,
                     remote=False):
@@ -391,8 +391,10 @@ class FastRP(object):
     @staticmethod
     def _getprofile(x, y, npoint=20):
         """
-        Given x and r compute the profile with the given
-        number of point and 
+        Given x and y compute the profile assuming x is
+        the coordinate and y the variable. It does it
+        by sorting along x, splitting into npoint
+        and computing the mean and standard deviation
 
         """
         y = y[np.argsort(x)]
@@ -402,6 +404,6 @@ class FastRP(object):
         yO = np.asarray([np.nanmean(k) for k in yS])
         xO = np.asarray([np.nanmean(k) for k in xS])
         eO = np.asarray([np.nanstd(k) for k in yS])
-        data = xray.DataArray(yO, coords={'rho':xO})
+        data = xray.DataArray(yO, coords={'rho': xO})
         data.attrs['err'] = eO
         return data
