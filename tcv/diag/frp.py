@@ -46,7 +46,8 @@ class FastRP(object):
             Server = 'tcvdata.epfl.ch'
 
         conn = tcv.shot(shot, server=Server)
-        _string = 'getnci(getnci(\\TOP.DIAGZ.MEASUREMENTS.UCSDFP,"MEMBER_NIDS")'\
+        _string = 'getnci(getnci(\\TOP.DIAGZ.MEASUREMENTS.UCSDFP,'\
+                  '"MEMBER_NIDS")'\
                   ',"NODE_NAME")'
         nodeName = conn.tdi(_string)
         nodeName = np.core.defchararray.strip(nodeName.values)
@@ -93,7 +94,7 @@ class FastRP(object):
         if stroke == 1:
             iSat = conn.tdi(r'\FP'+_IsName[0])
         else:
-            iSat = conn.tdi(r'\FPis1_2')
+            iSat = conn.tdi(r'\FP'+_IsName[1])
         # eventually combine the two
         # rename with time as dimension
         iSat = iSat.rename({'dim_0': 'time'})
@@ -211,7 +212,7 @@ class FastRP(object):
         _name = FastRP._getNodeName(shot, remote=remote)
         # first of all choose only those pertaining to the chosen stroke
         _nameS = np.asarray([n[-1] for n in _name])
-        _name = _name[_nameS == '1']
+        _name = _name[_nameS == str(stroke)]
         # now choose thich collect only vf
         _nameS = np.asarray([n[:2] for n in _name])
         _nameVf = _name[_nameS == 'VF']
@@ -297,6 +298,7 @@ class FastRP(object):
         # of xray
         dout = {}
         for n in vf.Probe.values:
+            print 'Computing profile for ' + n
             y = vf.sel(Probe=n).values
             x = rho.sel(r=rDict[n]).values
             out = FastRP._getprofile(x, y, npoint=npoint)
