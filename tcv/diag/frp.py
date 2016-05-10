@@ -409,3 +409,42 @@ class FastRP(object):
         data = xray.DataArray(yO, coords={'rho': xO})
         data.attrs['err'] = eO
         return data
+
+    @staticmethod
+    def iSstatfromshot(shot, stroke=1,
+                       npoint=20, remote=False):
+        """
+        It compute the profile as a function
+        of rho or radius of the statisical properties
+        of ion saturation current, namely the auto-correlation
+        the rms the flatness and the skewness by
+        slicing the signal in the given number of point
+
+        Parameters:
+        ----------
+        shot: int
+            Shot Number
+        stroke: int. Default 1
+            Choose between the 1st or 2nd stroke
+        remote: Boolean. Default False
+            If set it connect to 'localhost:1600' supposing
+            an ssh forwarding is taking place
+        npoint: Number of point for the radial resolution
+
+        Return:
+        ----------
+        Dictionary containing the following keys:
+        tac : auto-correlation time
+        rms : rms of the signal
+        skew: skewness
+        flat: flatness
+        Each value of the dictionary is an Xarray dataset
+        including as dimension the rho and as attribute the
+        absolute R position
+        Example:
+        --------
+        >>> from tcv.diag.frp import FastRP
+        >>> rho = FastRP.rhofromshot(51080, stroke=1, r=[0.001, 0.002])
+        >>> matplotlib.pylab.plot(vf.time, rho.values)
+
+        """

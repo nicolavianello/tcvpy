@@ -54,7 +54,7 @@ class General(object):
             ax.set_title(r'Shot # ' + str(shot))
             ax.set_xlabel(r't [s]')
             ax.set_ylabel(r'I$_p$ [kA]')
-        data = data.rename({'dim_0':'time'})
+        data = data.rename({'dim_0': 'time'})
         return data
 
     @staticmethod
