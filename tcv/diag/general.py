@@ -54,6 +54,7 @@ class General(object):
             ax.set_title(r'Shot # ' + str(shot))
             ax.set_xlabel(r't [s]')
             ax.set_ylabel(r'I$_p$ [kA]')
+        data = data.rename({'dim_0':'time'})
         return data
 
     @staticmethod
@@ -89,6 +90,7 @@ class General(object):
             ax.set_xlabel(r't [s]')
             ax.set_ylabel(r'B$_{\phi}$ [T]')
 
+        data = data.rename({'dim_0':'time'})
         return data
 
     @staticmethod
@@ -123,6 +125,7 @@ class General(object):
             ax.set_title(r'Shot # ' + str(shot))
             ax.set_xlabel(r't [s]')
             ax.set_ylabel(r'n$_{e}$ Line Integrated [10$^{19}$ fringes]')
+        data = data.rename({'dim_0':'time'})
         return data
 
     @staticmethod
@@ -156,6 +159,7 @@ class General(object):
             ax.set_title(r'Shot # ' + str(shot))
             ax.set_xlabel(r't [s]')
             ax.set_ylabel(r'n$_{e}$ Line Average [10$^{19}$ m$^{-3}$]')
+        data = data.rename({'dim_0':'time'})
         return data
 
     @staticmethod
@@ -200,6 +204,7 @@ class General(object):
             ax.set_title(r'Shot # ' + str(shot))
             ax.set_xlabel(r't [s]')
             ax.set_ylabel(axlabel)
+        data = data.rename({'dim_0':'time'})
         return data
 
     @staticmethod
@@ -243,6 +248,7 @@ class General(object):
             ax.set_title(r'Shot # ' + str(shot))
             ax.set_xlabel(r't [s]')
             ax.set_ylabel(axlabel)
+        data = data.rename({'dim_0':'time'})
         return data
 
     @staticmethod
@@ -289,6 +295,7 @@ class General(object):
             ax.set_title(r'Shot # ' + str(shot))
             ax.set_xlabel(r't [s]')
             ax.set_ylabel(axlabel)
+        data = data.rename({'dim_0':'time'})
         return data
 
     @staticmethod
@@ -324,6 +331,7 @@ class General(object):
                 ax.set_title(r'Shot # ' + str(shot))
                 ax.set_xlabel(r't [s]')
                 ax.set_ylabel(r'T_e [keV]')
+            data = data.rename({'dim_0':'time'})
             return data
         except:
             print 'No data stored for Xte for this shot'
