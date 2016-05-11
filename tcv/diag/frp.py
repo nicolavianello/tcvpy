@@ -10,13 +10,16 @@ import numpy as np
 import tcv
 import eqtools
 import xray
-
+import time
 
 class FastRP(object):
     """
 
     Load the signals from the Fast Reciprocating Probe
-    Diagnostic.
+    Diagnostic. It can load the data as a function of
+    time or compute the appropriate profiles. The
+    mapping from (R, Z) coordinates to rho is
+    ensured by the eqtools class
 
     """
 
@@ -110,7 +113,8 @@ class FastRP(object):
 
     @staticmethod
     def iSRhofromshot(shot, stroke=1, npoint=20,
-                      trange=None, remote=False):
+                      trange=None, remote=False,
+                      alltime=False):
 
         """
         Return the ion saturation current profile
@@ -131,10 +135,15 @@ class FastRP(object):
         remote: Boolean. Default False
             If set it connect to 'localhost:1600' supposing
             an ssh forwarding is taking place
+        alltime: Boolean. Default False
+            if set to true it compute the rho for each point
+            in time and then average. Otherwise rho is computed
+            at reduced timing (downsampled to npoint in time)
         Return:
         -------
         data: xray DataArray with rho poloidal as dimension and
-        error as attributes
+        error as attributes. It also saves the absolute
+        position as attribute
         Example:
         --------
         >>> data = iSRhofromshot(51080, stroke=1, npoint=20)
@@ -142,43 +151,76 @@ class FastRP(object):
         >>> matplotlib.pylab.errorbar(data.rho, data.values,
                                       yerr=data.err, fmt='none')
         """
-
         # get the appropriate iSat
         iSat = FastRP.iSTimefromshot(shot, stroke=stroke,
                                      remote=remote)
 
-        # get the appropriate rho
-        rho = FastRP.rhofromshot(shot, stroke=stroke,
-                                 remote=remote)
-        # now we need to limit to the tMin and tMax
-        # this is true both in case it is given or
-        # in the case we have rho
-        if trange is None:
-            trange = [rho.time.min(), rho.time.max()]
-            iN = iSat.where(((iSat.time >= rho.time.min()) &
-                             (iSat.time <= rho.time.max()))).values
-            iN = iN[~np.isnan(iN)]
-            rN = rho.values
+        if alltime:
+            # get the appropriate rho
+            rho = FastRP.rhofromshot(shot, stroke=stroke,
+                                     remote=remote)
+            # now we need to limit to the tMin and tMax
+            # this is true both in case it is given or
+            # in the case we have rho
+            if trange is None:
+                trange = [rho.time.min(), rho.time.max()]
+                iN = iSat.where(((iSat.time >= rho.time.min()) &
+                                 (iSat.time <= rho.time.max()))).values
+                iN = iN[~np.isnan(iN)]
+                rN = rho.values
+            else:
+                print 'limiting in time'
+                trange = np.atleast_1d(trange)
+                rN = rho.where(((rho.time >= trange[0]) &
+                                (rho.time <= trange[1]))).values
+                rN = rN[~np.isnan(rN)]
+                iN = iSat.where(((iSat.time >= trange[0]) &
+                                 (iSat.time <= trange[1]))).values
+                iN = iN[~np.isnan(iN)]
+            # now sort along rN and average corrispondingly
+            iN = iN[np.argsort(rN)]
+            rN = rN[np.argsort(rN)]
+            iSliced = np.array_split(iN, npoint)
+            rSliced = np.array_split(rN, npoint)
+            iOut = np.asarray([np.nanmean(k) for k in iSliced])
+            iErr = np.asarray([np.nanstd(k) for k in iSliced])
+            rOut = np.asarray([np.nanmean(k) for k in rSliced])
+            data = xray.DataArray(iOut, coords={'rho': rOut})
+            data.attrs['err'] = iErr
+            data.attrs['units'] = 'A'
         else:
-            print 'limiting in time'
-            trange = np.atleast_1d(trange)
-            rN = rho.where(((rho.time >= trange[0]) &
-                            (rho.time <= trange[1]))).values
-            rN = rN[~np.isnan(rN)]
-            iN = iSat.where(((iSat.time >= trange[0]) &
-                             (iSat.time <= trange[1]))).values
-            iN = iN[~np.isnan(iN)]
-        # now sort along rN and average corrispondingly
-        iN = iN[np.argsort(rN)]
-        rN = rN[np.argsort(rN)]
-        iSliced = np.array_split(iN, npoint)
-        rSliced = np.array_split(rN, npoint)
-        iOut = np.asarray([np.nanmean(k) for k in iSliced])
-        iErr = np.asarray([np.nanstd(k) for k in iSliced])
-        rOut = np.asarray([np.nanmean(k) for k in rSliced])
-        data = xray.DataArray(iOut, coords={'rho': rOut})
-        data.attrs['err'] = iErr
-        data.attrs['units'] = 'A'
+            print 'downsampling in time'
+            R = FastRP._getpostime(shot, stroke=stroke,
+                                   remote=remote)
+            if trange is None:
+                trange = [R.time.min(), R.time.max()]
+                iN = iSat.where(((iSat.time >= R.time.min()) &
+                                 (iSat.time <= R.time.max()))).values
+                iN = iN[~np.isnan(iN)]
+                rN = R.values
+                tN = R.time.values
+            else:
+                print 'limiting in time'
+                trange = np.atleast_1d(trange)
+                tN = R.time(((R.time >= trange[0]) &
+                             (R.time <= trange[1]))).values
+                rN = R.where(((R.time >= trange[0]) &
+                              (R.time <= trange[1]))).values
+                rN = rN[~np.isnan(rN)]
+                iN = iSat.where(((iSat.time >= trange[0]) &
+                                 (iSat.time <= trange[1]))).values
+                iN = iN[~np.isnan(iN)]
+            # slice also the timing
+            out = FastRP._getprofileT(rN, iN, tN)
+            # now convert into appropriate equilibrium
+            rho = np.zeros(npoint)
+            eq = eqtools.TCVLIUQETree(shot)
+            for x, t, i in zip(out.R.values, out.time, range(npoint)):
+                rho[i] = eq.rz2psinorm(x, 0, t, sqrt=True)
+            data = xray.DataArray(out.values, coords={'rho': rho})
+            data.attrs['err'] = out.err
+            data.attrs['R'] = out.R.values
+
         return data
 
     @staticmethod
@@ -235,7 +277,8 @@ class FastRP(object):
 
     @staticmethod
     def VfRhofromshot(shot, stroke=1, npoint=20,
-                      trange=None, remote=False):
+                      trange=None, remote=False,
+                      alltime=False):
 
         """
         Return the floating potential profile
@@ -257,6 +300,10 @@ class FastRP(object):
         remote: Boolean. Default False
             If set it connect to 'localhost:1600' supposing
             an ssh forwarding is taking place
+        alltime: Boolean. Default False
+            if set to true it compute the rho for each point
+            in time and then average. Otherwise rho is computed
+            at reduced timing (downsampled to npoint in time)
         Return:
         -------
         A dictioary with keys equal to the name of the probe and value an
@@ -271,7 +318,7 @@ class FastRP(object):
         vf = FastRP.VfTimefromshot(shot, stroke=stroke,
                                    remote=remote)
         # read the probe name and create a dictionary with
-        # probe associated to the
+        # probe associated to the radial position
         rDict = {}
         for p in vf.Probe.values:
             if p[2] == 'R':
@@ -279,30 +326,55 @@ class FastRP(object):
             else:
                 rDict[p] = 0.
 
-        # now create a dictionary which associate the
-        # relative position of the probe tip with respect
-        # to the calculated position of the front tip
-        rho = FastRP.rhofromshot(shot, stroke=stroke,
-                                 remote=remote, r=0.003)
-        # now for each of the probe we perform the
-        # evaluation of the profile
-        if trange is None:
-            trange = [rho.time.min(), rho.time.max()]
-        # now limit all the signals to the appropriate timing
-        vf = vf[:, ((vf.time >= trange[0]) &
-                    (vf.time <= trange[1]))]
-        rho = rho[:, ((rho.time >= trange[0]) &
-                      (rho.time <= trange[1]))]
+        if alltime:
+            rho = FastRP.rhofromshot(shot, stroke=stroke,
+                                     remote=remote, r=0.003)
+            # now for each of the probe we perform the
+            # evaluation of the profile
+            if trange is None:
+                trange = [rho.time.min(), rho.time.max()]
+            # now limit all the signals to the appropriate timing
+            vf = vf[:, ((vf.time >= trange[0]) &
+                        (vf.time <= trange[1]))]
+            rho = rho[:, ((rho.time >= trange[0]) &
+                          (rho.time <= trange[1]))]
 
-        # now we can use the groupby and apply method
-        # of xray
-        dout = {}
-        for n in vf.Probe.values:
-            print 'Computing profile for ' + n
-            y = vf.sel(Probe=n).values
-            x = rho.sel(r=rDict[n]).values
-            out = FastRP._getprofile(x, y, npoint=npoint)
-            dout[n] = out
+            # now we can use the groupby and apply method
+            # of xray
+            dout = {}
+            for n in vf.Probe.values:
+                print 'Computing profile for ' + n
+                y = vf.sel(Probe=n).values
+                x = rho.sel(r=rDict[n]).values
+                out = FastRP._getprofileR(x, y, npoint=npoint)
+                dout[n] = out
+        else:
+            eq = eqtools.TCVLIUQETree(shot)
+            R = FastRP._getpostime(shot, stroke=stroke,
+                                   remote=remote, r=0.003)
+            # now for each of the probe we perform the
+            # evaluation of the profile
+            if trange is None:
+                trange = [R.time.min(), R.time.max()]
+            # now limit all the signals to the appropriate timing
+            vf = vf[:, ((vf.time >= trange[0]) &
+                        (vf.time <= trange[1]))]
+            R = R[:, ((R.time >= trange[0]) &
+                      (R.time <= trange[1]))]
+            dout = {}
+            for n in vf.Probe.values:
+                print 'Computing profile for ' + n
+                y = vf.sel(Probe=n).values
+                x = R.sel(r=rDict[n]).values
+                t = R.time.values
+                out = FastRP._getprofileT(x, y, t,  npoint=npoint)
+                rho = np.zeros(npoint)
+                for x, t, i in zip(out.R.values, out.time, range(npoint)):
+                    rho[i] = eq.rz2psinorm(x, 0, t, sqrt=True)
+                out2 = xray.DataArray(out.values, coords={'rho': rho})
+                out2.attrs['err'] = out.err
+                out2.attrs['R'] = out.R.values
+                dout[n] = out2
         return dout
 
     @staticmethod
@@ -391,7 +463,84 @@ class FastRP(object):
         return data
 
     @staticmethod
-    def _getprofile(x, y, npoint=20):
+    def _getpostime(shot, stroke=1, r=None,
+                    remote=False):
+        """
+        Given the shot and the stroke it load the
+        appropriate position of the probe.
+        It save it
+        as a xray data structure with coords ('time', 'r')
+        Parameters:
+        ----------
+        shot: int
+            Shot Number
+        stroke: int. Default 1
+            Choose between the 1st or 2nd stroke
+        remote: Boolean. Default False
+            If set it connect to 'localhost:1600' supposing
+            an ssh forwarding is taking place
+        r: Float
+           This can be a floating or an ndarray or a list
+           containing the relative radial distance with
+           respect to the front tip.
+           It is given in [m] with positive
+           values meaning the tip is behind the front one
+        Return:
+        ----------
+        rProbe:xarray DataArray
+            rProbe if given, the relative distance
+            from the top tip. Remeber that it limits
+            the time to the maximum position to the
+            maximum available point in the psi grid
+        Example:
+        --------
+        >>> from tcv.diag.frp import FastRP
+        >>> rProbe = FastRP._getpostime(51080, stroke=1, r=[0.001, 0.002])
+        >>> matplotlib.pylab.plot(vf.time, rho.values)
+
+        """
+        # determine first of all the equilibrium
+        eq = eqtools.TCVLIUQETree(shot)
+        rMax = eq.getRGrid().max()
+        if remote:
+            Server = 'localhost:1600'
+        else:
+            Server = 'tcvdata.epfl.ch'
+        # open the connection
+        conn = tcv.shot(shot, server=Server)
+        # now determine the radial location
+        if stroke == 1:
+            cPos = conn.tdi(r'\fpcalpos_1')
+        else:
+            cPos = conn.tdi(r'\fpcalpos_2')
+        # limit our self to the region where equilibrium
+        # is computed
+        # to avoid the problem of None values if we are
+        # considering also retracted position we distingish
+        if r is None:
+            add = 0
+        else:
+            add = np.atleast_1d(r).max()
+
+        rN = cPos.where((cPos/1e2+add) < rMax)
+        tN = cPos.where((cPos.values/1e2+add) < rMax).dim_0.values
+        tN = tN[~np.isnan(rN.values)]
+        # rN should be in [m]
+        rN = rN.values[~np.isnan(rN.values)]/1e2
+        # ok now distinguish between the different cases
+        #
+        if r is not None:
+            rOut = np.vstack((rN, rN+r))
+            data = xray.DataArray(rOut, coords=[np.append(0, r), tN],
+                                  dims=['r', 'time'])
+        else:
+            data = xray.DataArray(rN, coords={'time': tN})
+
+        conn.close
+        return data
+
+    @staticmethod
+    def _getprofileR(x, y, npoint=20):
         """
         Given x and y compute the profile assuming x is
         the coordinate and y the variable. It does it
@@ -408,6 +557,31 @@ class FastRP(object):
         eO = np.asarray([np.nanstd(k) for k in yS])
         data = xray.DataArray(yO, coords={'rho': xO})
         data.attrs['err'] = eO
+        return data
+
+    @staticmethod
+    def _getprofileT(x, y, t, npoint=20):
+        """
+        Given x and y and corresponding time
+        compute the profile assuming x is
+        the coordinate and y the variable. It does it
+        by splitting along the time dimension and
+        save the average timing
+        """
+
+        y = y[np.argsort(t)]
+        x = x[np.argsort(t)]
+        t = t[np.argsort(t)]
+        yS = np.array_split(y, npoint)
+        xS = np.array_split(x, npoint)
+        tS = np.array_split(t, npoint)
+        yO = np.asarray([np.nanmean(k) for k in yS])
+        xO = np.asarray([np.nanmean(k) for k in xS])
+        eO = np.asarray([np.nanstd(k) for k in yS])
+        tO = np.asarray([np.nanmean(k) for k in tS])
+        data = xray.DataArray(yO, coords={'R': xO})
+        data.attrs['err'] = eO
+        data.attrs['time'] = tO
         return data
 
     @staticmethod
@@ -448,3 +622,5 @@ class FastRP(object):
         >>> matplotlib.pylab.plot(vf.time, rho.values)
 
         """
+
+        return -1
