@@ -10,7 +10,7 @@ import numpy as np
 import tcv
 import eqtools
 import xray
-import time
+from scipy import stats
 
 class FastRP(object):
     """
@@ -375,6 +375,7 @@ class FastRP(object):
                 out2.attrs['err'] = out.err
                 out2.attrs['R'] = out.R.values
                 dout[n] = out2
+
         return dout
 
     @staticmethod
@@ -586,7 +587,8 @@ class FastRP(object):
 
     @staticmethod
     def iSstatfromshot(shot, stroke=1,
-                       npoint=20, remote=False):
+                       npoint=20, trange=None,
+                       remote=False):
         """
         It compute the profile as a function
         of rho or radius of the statisical properties
@@ -607,20 +609,65 @@ class FastRP(object):
 
         Return:
         ----------
-        Dictionary containing the following keys:
-        tac : auto-correlation time
+        xarray DataArray with dimension rho and values the
+        auto-correlation time. As attribute it saves also
         rms : rms of the signal
         skew: skewness
         flat: flatness
-        Each value of the dictionary is an Xarray dataset
-        including as dimension the rho and as attribute the
-        absolute R position
+
         Example:
         --------
         >>> from tcv.diag.frp import FastRP
-        >>> rho = FastRP.rhofromshot(51080, stroke=1, r=[0.001, 0.002])
-        >>> matplotlib.pylab.plot(vf.time, rho.values)
+        >>> stat = FastRP.iSstatfromshot(51080, stroke=1)
+        >>> matplotlib.pylab.plot(stat.rho, stat.values)
 
         """
 
-        return -1
+        # the the position in R
+        R = FastRP._getpostime(shot, stroke=stroke, remote=remote)
+        # the the iSat
+        iS = FastRP.iSTimefromshot(shot, stroke=stroke, remote=remote)
+        #
+        if trange is None:
+            trange = [R.time.min(), R.time.max()]
+        # limit to the same timing
+        iS = iS[((iS.time >= trange[0]) &
+                 (iS.time <= trange[1]))].values
+        T = R[((R.time >= trange[0]) &
+               (R.time <= trange[1]))].time.values
+        R = R[((R.time >= trange[0]) &
+               (R.time <= trange[1]))].values
+        dt = (T.max()-T.min())/(T.size-1)
+        # now we slice appropriately
+        iSS = np.array_split(iS, npoint)
+        tau = np.zeros(npoint)
+        rms = np.asarray([k.std() for k in iSS])
+        Fl = np.asarray([stats.kurtosis(k, fisher=False) for k in iSS])
+        Sk = np.asarray([stats.skew(k) for k in iSS])
+        for i in range(np.size(iSS)):
+            dummy = iSS[i]
+            c = np.correlate(dummy, dummy, mode='full')
+            # normalize
+            c /= c.max()
+            lag = np.arange(c.size)-c.size/2
+            # check if c.min > c/2 then is NaN
+            if (c.min() >= 1./np.exp(1)):
+                tau[i] = np.float('nan')
+            else:
+                tau[i] = 2*np.abs(lag[np.argmin(np.abs(c-1/np.exp(1)))])*dt
+
+        # determine the position
+        rO = np.asarray([np.nanmean(k) for k
+                         in np.array_split(R, npoint)])
+        tO = np.asarray([np.nanmean(k) for k
+                         in np.array_split(T, npoint)])
+        # convert in rho
+        eq = eqtools.TCVLIUQETree(shot)
+        rho = np.zeros(npoint)
+        for r, t, i in zip(rO, tO, range(npoint)):
+            rho[i] = eq.rz2psinorm(r, 0, t, sqrt=True)
+        data = xray.DataArray(tau, coords={'rho': rho})
+        data.attrs['rms'] = rms
+        data.attrs['Flat'] = Fl
+        data.attrs['Skew'] = Sk
+        return data
