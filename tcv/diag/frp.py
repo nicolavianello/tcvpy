@@ -12,6 +12,7 @@ import eqtools
 import xray
 from scipy import stats
 
+
 class FastRP(object):
     """
 
@@ -108,6 +109,12 @@ class FastRP(object):
         iSat -= iSat.where(iSat.time < iSat.time.min() +
                            0.01).mean(dim='time')
         # close the connection
+        # unfortunately we need the delta t is not
+        # constant. We redefine the time basis
+        _dTime = np.arange(iSat.size, dtype='double')*4.e-7 + \
+                 iSat.time.min().item()
+        iSat.time.values = _dTime
+
         conn.close
         return iSat
 
@@ -272,6 +279,7 @@ class FastRP(object):
         data['Probe'] = names
         # detrend initial part
         data -= data.where(data.time < data.time.min()+0.01).mean(dim='time')
+        # build the timing in double precision
         conn.close
         return data
 
@@ -416,51 +424,28 @@ class FastRP(object):
         """
         # determine first of all the equilibrium
         eq = eqtools.TCVLIUQETree(shot)
-        rMax = eq.getRGrid().max()
-        if remote:
-            Server = 'localhost:1600'
-        else:
-            Server = 'tcvdata.epfl.ch'
-        # open the connection
-        conn = tcv.shot(shot, server=Server)
-        # now determine the radial location
-        if stroke == 1:
-            cPos = conn.tdi(r'\fpcalpos_1')
-        else:
-            cPos = conn.tdi(r'\fpcalpos_2')
-        # limit our self to the region where equilibrium
-        # is computed
-        # to avoid the problem of None values if we are
-        # considering also retracted position we distingish
-        if r is None:
-            add = 0
-        else:
-            add = np.atleast_1d(r).max()
-
-        rN = cPos.where((cPos/1e2+add) < rMax)
-        tN = cPos.where((cPos.values/1e2+add) < rMax).dim_0.values
-        tN = tN[~np.isnan(rN.values)]
-        # rN should be in rho
-        rN = rN.values[~np.isnan(rN.values)]/1e2
-        # ok now distinguish between the different cases
-        #
+        rN = FastRP._getpostime(shot, stroke=stroke, remote=remote,
+                                r=r)
         if r is not None:
             r = np.atleast_1d(r)
-            rho = np.zeros((r.size+1, rN.size))
-            for R, t, i in zip(rN, tN, range(tN.size)):
+            rho = np.zeros((r.size+1, rN.shape[1]))
+            for R, t, i in zip(rN.values[0, :],
+                               rN.time.values,
+                               range(rN.time.size)):
                 rho[:, i] = eq.rz2psinorm(np.append(R, R+r),
                                           np.repeat(0, r.size+1),
                                           t, sqrt=True)
 
-            data = xray.DataArray(rho, coords=[np.append(0, r), tN],
+            data = xray.DataArray(rho, coords=[np.append(0, r),
+                                               rN.time.values],
                                   dims=['r', 'time'])
         else:
             rho = np.zeros(rN.size)
-            for R, t, i in zip(rN, tN, range(tN.size)):
+            for R, t, i in zip(rN.values, rN.time.values,
+                               range(rN.time.size)):
                 rho[i] = eq.rz2psinorm(R, 0, t, sqrt=True)
-            data = xray.DataArray(rho, coords={'time': tN})
+            data = xray.DataArray(rho, coords={'time': rN.time.values})
 
-        conn.close
         return data
 
     @staticmethod
@@ -523,11 +508,14 @@ class FastRP(object):
         else:
             add = np.atleast_1d(r).max()
 
-        rN = cPos.where((cPos/1e2+add) < rMax)
-        tN = cPos.where((cPos.values/1e2+add) < rMax).dim_0.values
-        tN = tN[~np.isnan(rN.values)]
-        # rN should be in [m]
-        rN = rN.values[~np.isnan(rN.values)]/1e2
+        # we need to find the minimum maximum time where
+        # the probe is within the range of psiRZ
+        trange = [cPos[(cPos/1e2 + add) < rMax].dim_0.values.min(),
+                  cPos[(cPos/1e2 + add) < rMax].dim_0.values.max()]
+        rN = cPos[((cPos.dim_0 > trange[0]) &
+                   (cPos.dim_0 < trange[1]))].values/1e2
+        tN = cPos[((cPos.dim_0 > trange[0]) &
+                   (cPos.dim_0 < trange[1]))].dim_0.values
         # ok now distinguish between the different cases
         #
         if r is not None:
@@ -629,7 +617,7 @@ class FastRP(object):
         iS = FastRP.iSTimefromshot(shot, stroke=stroke, remote=remote)
         #
         if trange is None:
-            trange = [R.time.min(), R.time.max()]
+            trange = [R.time.min().item(), R.time.max().item()]
         # limit to the same timing
         iS = iS[((iS.time >= trange[0]) &
                  (iS.time <= trange[1]))].values
@@ -655,7 +643,6 @@ class FastRP(object):
                 tau[i] = np.float('nan')
             else:
                 tau[i] = 2*np.abs(lag[np.argmin(np.abs(c-1/np.exp(1)))])*dt
-
         # determine the position
         rO = np.asarray([np.nanmean(k) for k
                          in np.array_split(R, npoint)])
