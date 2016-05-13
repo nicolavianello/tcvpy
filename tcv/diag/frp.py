@@ -11,6 +11,7 @@ import tcv
 import eqtools
 import xray
 from scipy import stats
+from scipy.interpolate import UnivariateSpline
 
 
 class FastRP(object):
@@ -97,8 +98,10 @@ class FastRP(object):
         conn = tcv.shot(shot, server=Server)
         if stroke == 1:
             iSat = conn.tdi(r'\FP'+_IsName[0])
+            print 'Retrieveing data for stroke 1'
         else:
             iSat = conn.tdi(r'\FP'+_IsName[1])
+            print 'Retrieveing data for stroke 2'
         # eventually combine the two
         # rename with time as dimension
         iSat = iSat.rename({'dim_0': 'time'})
@@ -195,6 +198,10 @@ class FastRP(object):
             data = xray.DataArray(iOut, coords={'rho': rOut})
             data.attrs['err'] = iErr
             data.attrs['units'] = 'A'
+            # save into the data also the object for spline interpolation
+            data.attrs['spline'] = UnivariateSpline(rOut,
+                                                    iOut,
+                                                    w=1./iErr, ext=0)
         else:
             print 'downsampling in time'
             R = FastRP._getpostime(shot, stroke=stroke,
@@ -218,15 +225,24 @@ class FastRP(object):
                                  (iSat.time <= trange[1]))).values
                 iN = iN[~np.isnan(iN)]
             # slice also the timing
-            out = FastRP._getprofileT(rN, iN, tN)
+            out = FastRP._getprofileT(rN, iN, tN,
+                                      npoint=npoint)
             # now convert into appropriate equilibrium
             rho = np.zeros(npoint)
             eq = eqtools.TCVLIUQETree(shot)
             for x, t, i in zip(out.R.values, out.time, range(npoint)):
                 rho[i] = eq.rz2psinorm(x, 0, t, sqrt=True)
-            data = xray.DataArray(out.values, coords={'rho': rho})
-            data.attrs['err'] = out.err
-            data.attrs['R'] = out.R.values
+            _id = np.argsort(rho)
+            data = xray.DataArray(out.values[_id],
+                                  coords={'rho': rho[_id]})
+            data.attrs['err'] = out.err[_id]
+            data.attrs['R'] = out.R.values[_id]
+            data.attrs['Rsp'] = UnivariateSpline(data.attrs['R'],
+                                                 data.values,
+                                                 w=1./data.err, ext=0)
+            data.attrs['Rhosp'] = UnivariateSpline(data.rho.values,
+                                                   data.values,
+                                                   w=1./data.err, ext=0)
 
         return data
 
@@ -375,13 +391,16 @@ class FastRP(object):
                 y = vf.sel(Probe=n).values
                 x = R.sel(r=rDict[n]).values
                 t = R.time.values
-                out = FastRP._getprofileT(x, y, t,  npoint=npoint)
+                out = FastRP._getprofileT(x, y, t,
+                                          npoint=npoint)
                 rho = np.zeros(npoint)
                 for x, t, i in zip(out.R.values, out.time, range(npoint)):
                     rho[i] = eq.rz2psinorm(x, 0, t, sqrt=True)
-                out2 = xray.DataArray(out.values, coords={'rho': rho})
-                out2.attrs['err'] = out.err
-                out2.attrs['R'] = out.R.values
+                _id = np.argsort(rho)
+                out2 = xray.DataArray(out.values[_id],
+                                      coords={'rho': rho[_id]})
+                out2.attrs['err'] = out.err[_id]
+                out2.attrs['R'] = out.R.values[_id]
                 dout[n] = out2
 
         return dout
@@ -558,9 +577,6 @@ class FastRP(object):
         save the average timing
         """
 
-        y = y[np.argsort(t)]
-        x = x[np.argsort(t)]
-        t = t[np.argsort(t)]
         yS = np.array_split(y, npoint)
         xS = np.array_split(x, npoint)
         tS = np.array_split(t, npoint)

@@ -163,7 +163,8 @@ class VesselDrawer(object):
             c.set_clip_path(vessel_in)
 
 
-def tcvview(shotnum, time, vessel=True, ports=False, tiles=True):
+def tcvview(shotnum, time, vessel=True, ports=False,
+            col='red', tiles=True):
     """
     Popular way to display TCV.
 
@@ -203,8 +204,8 @@ def tcvview(shotnum, time, vessel=True, ports=False, tiles=True):
     levels_core = np.linspace(0, 10, 101)
     levels_sol = np.linspace(-10, 0, 101)
 
-    ax.contour(r, z, psi.T, levels=levels_core, colors='r')
-    ax.contour(r, z, psi.T, levels=levels_sol, colors='r', linestyles=':')
+    ax.contour(r, z, psi.T, levels=levels_core, colors=col)
+    ax.contour(r, z, psi.T, levels=levels_sol, colors=col, linestyles=':')
     ax.plot([r0], [z0], 'r+')
     ax.set_aspect('equal')
 
