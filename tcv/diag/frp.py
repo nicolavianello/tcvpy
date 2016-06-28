@@ -216,8 +216,8 @@ class FastRP(object):
             else:
                 print 'limiting in time'
                 trange = np.atleast_1d(trange)
-                tN = R.time(((R.time >= trange[0]) &
-                             (R.time <= trange[1]))).values
+                tN = R.time[((R.time >= trange[0]) &
+                             (R.time <= trange[1]))].values
                 rN = R.where(((R.time >= trange[0]) &
                               (R.time <= trange[1]))).values
                 rN = rN[~np.isnan(rN)]
@@ -674,3 +674,18 @@ class FastRP(object):
         data.attrs['Flat'] = Fl
         data.attrs['Skew'] = Sk
         return data
+
+    @staticmethod
+    def _hastroke(shot, stroke=1):
+        """
+        Simple method which return a boolean according
+        to the fact the stroke has worked or not
+        """
+        try:
+            iS = FastRP.iSTimefromshot(shot, stroke=stroke)
+            if (iS.max()-iS.min()) > 0.1:
+                return True
+            else:
+                return False
+        except:
+            return False
