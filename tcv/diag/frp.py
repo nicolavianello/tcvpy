@@ -151,9 +151,12 @@ class FastRP(object):
             at reduced timing (downsampled to npoint in time)
         Return:
         -------
-        data: xray DataArray with rho poloidal as dimension and
-        error as attributes. It also saves the absolute
-        position as attribute
+        xRay DataArray with coordinates the rho and as
+        attributes the error, the absolute radial position
+        and the R-Rsep position, upstream remapped. As attributes we
+        also save the UnivariateSpline object for the profile along
+        the 3 saved x (rho, R, R-Rsep Upstream Remapped)
+
         Example:
         --------
         >>> data = iSRhofromshot(51080, stroke=1, npoint=20)
@@ -169,6 +172,9 @@ class FastRP(object):
             # get the appropriate rho
             rho = FastRP.rhofromshot(shot, stroke=stroke,
                                      remote=remote)
+            # get the appropriate R-Rsep
+            rresp = FastRP.Rrsepfromshot(shot, stroke=stroke,
+                                         remote=remote)
             # now we need to limit to the tMin and tMax
             # this is true both in case it is given or
             # in the case we have rho
@@ -229,21 +235,26 @@ class FastRP(object):
                                       npoint=npoint)
             # now convert into appropriate equilibrium
             rho = np.zeros(npoint)
+            rrsep = np.zeros(npoint)
             eq = eqtools.TCVLIUQETree(shot)
             for x, t, i in zip(out.R.values, out.time, range(npoint)):
                 rho[i] = eq.rz2psinorm(x, 0, t, sqrt=True)
+                rrsep[i] = eq.rz2rmid(x, 0, t)- eq.getRMidOutSpline()(t)
             _id = np.argsort(rho)
             data = xray.DataArray(out.values[_id],
                                   coords={'rho': rho[_id]})
             data.attrs['err'] = out.err[_id]
             data.attrs['R'] = out.R.values[_id]
+            data.attrs['Rrsep'] = rrep[_id]
             data.attrs['Rsp'] = UnivariateSpline(data.attrs['R'],
                                                  data.values,
                                                  w=1./data.err, ext=0)
             data.attrs['Rhosp'] = UnivariateSpline(data.rho.values,
                                                    data.values,
                                                    w=1./data.err, ext=0)
-
+            data.attrs['RrsepSp'] = UnivariateSpline(data.attrs['Rrsep'],
+                                                     data.values, w=1./data.err
+                                                     ext=0)
         return data
 
     @staticmethod
@@ -330,9 +341,10 @@ class FastRP(object):
             at reduced timing (downsampled to npoint in time)
         Return:
         -------
-        A dictioary with keys equal to the name of the probe and value an
-        xRay DataArray with coordinates the rho and attributes the error
-
+        Dictionaro of xRay DataArray with coordinates the rho and as
+        attributes the error, the absolute radial position
+        and the R-Rsep position, upstream remapped
+        
         Example:
         --------
         >>> d = VfRhofromshot(51080, stroke=1, npoint=20)
@@ -467,6 +479,67 @@ class FastRP(object):
 
         return data
 
+    @staticmethod
+    def Rrsepfromshot(shot, stroke=1, r=None,
+                    remote=False):
+        """
+        It compute the R-Rsep array as a function of time
+        for a given stroke. It save it
+        as a xray data structure with coords ('time', 'r')
+        Parameters:
+        ----------
+        shot: int
+            Shot Number
+        stroke: int. Default 1
+            Choose between the 1st or 2nd stroke
+        remote: Boolean. Default False
+            If set it connect to 'localhost:1600' supposing
+            an ssh forwarding is taking place
+        r: Float
+           This can be a floating or an ndarray or a list
+           containing the relative radial distance with
+           respect to the front tip (useful to determine
+           the rho corresponding to back probes).
+           It is given in [m] with positive
+           values meaning the tip is behind the front one
+        Return:
+        ----------
+        Rrsep:xarray DataArray
+            R-Rsep upstream remapped with dimension time
+        Example:
+        --------
+        >>> from tcv.diag.frp import FastRP
+        >>> Rrsep = FastRP.Rrsepfromshot(51080, stroke=1, r=[0.001, 0.002])
+
+        """
+        # determine first of all the equilibrium
+        eq = eqtools.TCVLIUQETree(shot)
+        rN = FastRP._getpostime(shot, stroke=stroke, remote=remote,
+                                r=r)
+        if r is not None:
+            r = np.atleast_1d(r)
+            rho = np.zeros((r.size+1, rN.shape[1]))
+            for R, t, i in zip(rN.values[0, :],
+                               rN.time.values,
+                               range(rN.time.size)):
+                rho[:, i] = eq.rz2rmid(np.append(R, R+r),
+                                          np.repeat(0, r.size+1),
+                                          t) - eq.getRmidOutSpline()(t)
+
+            data = xray.DataArray(rho, coords=[np.append(0, r),
+                                               rN.time.values],
+                                  dims=['r', 'time'])
+        else:
+            rho = np.zeros(rN.size)
+            for R, t, i in zip(rN.values, rN.time.values,
+                               range(rN.time.size)):
+                rho[i] = eq.rz2rmid(R, 0, t) - \
+                         eq.getRmidOutSpline()(t)
+            data = xray.DataArray(rho, coords={'time': rN.time.values})
+
+        return data
+
+    
     @staticmethod
     def _getpostime(shot, stroke=1, r=None,
                     remote=False):
