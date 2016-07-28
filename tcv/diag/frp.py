@@ -239,13 +239,13 @@ class FastRP(object):
             eq = eqtools.TCVLIUQETree(shot)
             for x, t, i in zip(out.R.values, out.time, range(npoint)):
                 rho[i] = eq.rz2psinorm(x, 0, t, sqrt=True)
-                rrsep[i] = eq.rz2rmid(x, 0, t)- eq.getRMidOutSpline()(t)
+                rrsep[i] = eq.rz2rmid(x, 0, t) - eq.getRmidOutSpline()(t)
             _id = np.argsort(rho)
             data = xray.DataArray(out.values[_id],
                                   coords={'rho': rho[_id]})
             data.attrs['err'] = out.err[_id]
             data.attrs['R'] = out.R.values[_id]
-            data.attrs['Rrsep'] = rrep[_id]
+            data.attrs['Rrsep'] = rrsep[_id]
             data.attrs['Rsp'] = UnivariateSpline(data.attrs['R'],
                                                  data.values,
                                                  w=1./data.err, ext=0)
@@ -253,7 +253,7 @@ class FastRP(object):
                                                    data.values,
                                                    w=1./data.err, ext=0)
             data.attrs['RrsepSp'] = UnivariateSpline(data.attrs['Rrsep'],
-                                                     data.values, w=1./data.err
+                                                     data.values, w=1./data.err,
                                                      ext=0)
         return data
 
@@ -463,10 +463,12 @@ class FastRP(object):
             for R, t, i in zip(rN.values[0, :],
                                rN.time.values,
                                range(rN.time.size)):
-                rho[:, i] = eq.rz2psinorm(np.append(R, R+r),
-                                          np.repeat(0, r.size+1),
-                                          t, sqrt=True)
-
+                try:
+                    rho[:, i] = eq.rz2psinorm(np.append(R, R+r),
+                                              np.repeat(0, r.size+1),
+                                              t, sqrt=True)
+                except:
+                    rho[:, i] = np.nan
             data = xray.DataArray(rho, coords=[np.append(0, r),
                                                rN.time.values],
                                   dims=['r', 'time'])
@@ -474,14 +476,17 @@ class FastRP(object):
             rho = np.zeros(rN.size)
             for R, t, i in zip(rN.values, rN.time.values,
                                range(rN.time.size)):
-                rho[i] = eq.rz2psinorm(R, 0, t, sqrt=True)
+                try:
+                    rho[i] = eq.rz2psinorm(R, 0, t, sqrt=True)
+                except:
+                    rho[i] = np.nan
             data = xray.DataArray(rho, coords={'time': rN.time.values})
 
         return data
 
     @staticmethod
     def Rrsepfromshot(shot, stroke=1, r=None,
-                    remote=False):
+                      remote=False):
         """
         It compute the R-Rsep array as a function of time
         for a given stroke. It save it
@@ -523,8 +528,8 @@ class FastRP(object):
                                rN.time.values,
                                range(rN.time.size)):
                 rho[:, i] = eq.rz2rmid(np.append(R, R+r),
-                                          np.repeat(0, r.size+1),
-                                          t) - eq.getRmidOutSpline()(t)
+                                       np.repeat(0, r.size+1),
+                                       t) - eq.getRmidOutSpline()(t)
 
             data = xray.DataArray(rho, coords=[np.append(0, r),
                                                rN.time.values],
@@ -533,13 +538,15 @@ class FastRP(object):
             rho = np.zeros(rN.size)
             for R, t, i in zip(rN.values, rN.time.values,
                                range(rN.time.size)):
-                rho[i] = eq.rz2rmid(R, 0, t) - \
-                         eq.getRmidOutSpline()(t)
+                try:
+                    rho[i] = eq.rz2rmid(R, 0, t) - \
+                             eq.getRmidOutSpline()(t)
+                except:
+                    rho[i] = np.nan
             data = xray.DataArray(rho, coords={'time': rN.time.values})
 
         return data
 
-    
     @staticmethod
     def _getpostime(shot, stroke=1, r=None,
                     remote=False):
