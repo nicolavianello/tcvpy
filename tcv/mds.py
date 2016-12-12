@@ -93,7 +93,7 @@ class MDSConnection(DataSource):
         name_of = r'name_of({})'.format(dim_of)
 
         try:
-            dim_name = self._conn.get(name_of, *args)
+            dim_name = mds.Data.compile(name_of, *args).evaluate().data()
         except mds.MdsException:
             dim_name = name if name else 'dim_{}'.format(i)
 

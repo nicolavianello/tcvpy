@@ -44,6 +44,7 @@ class General(object):
         """
 
         data = tcv.shot(shot).tdi('tcv_ip()')
+        tcv.shot(shot).close()
         if plt:
             fig = mpl.pylab.figure(figsize=(6, 5))
             ax = fig.add_subplot(111)
@@ -78,6 +79,7 @@ class General(object):
         """
 
         data = tcv.shot(shot).tdi('tcv_bphi()')
+        tcv.shot(shot).close()
         data.values *= -1
         if plt:
             fig = mpl.pylab.figure(figsize=(6, 5))
@@ -115,6 +117,7 @@ class General(object):
         """
 
         data = tcv.shot(shot).tdi(r'\results::fir:lin_int_dens')
+        tcv.shot(shot).close()
         if plt:
             fig = mpl.pylab.figure(figsize=(6, 5))
             ax = fig.add_subplot(111)
@@ -149,6 +152,7 @@ class General(object):
         """
 
         data = tcv.shot(shot).tdi(r'\results::fir:n_average')
+        tcv.shot(shot).close()
         if plt:
             fig = mpl.pylab.figure(figsize=(6, 5))
             ax = fig.add_subplot(111)
@@ -193,6 +197,7 @@ class General(object):
             axlabel = r'q$_{95}$'
 
         data = tcv.shot(shot).tdi(Str)
+        tcv.shot(shot).close()
 
         if plt:
             fig = mpl.pylab.figure(figsize=(6, 5))
@@ -237,6 +242,7 @@ class General(object):
             axlabel = r'$\varepsilon_{95}$'
 
         data = tcv.shot(shot).tdi(Str)
+        tcv.shot(shot).close()
 
         if plt:
             fig = mpl.pylab.figure(figsize=(6, 5))
@@ -284,6 +290,7 @@ class General(object):
             axlabel = r'$\delta_{95}$'
 
         data = tcv.shot(shot).tdi(Str)
+        tcv.shot(shot).close()
 
         if plt:
             fig = mpl.pylab.figure(figsize=(6, 5))
@@ -320,6 +327,7 @@ class General(object):
         """
         try:
             data = tcv.shot(shot).tdi(r'\results::te_x_a')
+            tcv.shot(shot).close()
 
             if plt:
                 fig = mpl.pylab.figure(figsize=(6, 5))
