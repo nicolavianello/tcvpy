@@ -29,9 +29,10 @@ class MDSConnection(DataSource):
         self.tree = tree
         self.server = server
 
-        self._conn = mds.Connection(server)
-        self._conn.openTree(tree, shot)
-
+#        self._conn = mds.Connection(server)
+#        self._conn.openTree(tree, shot)
+        self._conn = mds.Tree(self.tree, self.shot)
+        
     def tdi(self, cmd, *args, **kwargs):
         """
         Execute a TDI command.
@@ -55,13 +56,13 @@ class MDSConnection(DataSource):
         return self._as_xray(cmd, *args, **kwargs)
 
     def close(self):
-        self._conn.closeTree(self.tree, self.shot)
+        self._conn.quit()
 
     def _as_xray(self, query, *args, **kwargs):
         """ Read one signal through the connection """
 
         # arrays are returned in column-major (Fortran) order so we use .T
-        data = self._conn.get(query, *args).data().T
+        data = mds.Data.compile(query, *args).evaluate().data().T
         dims = kwargs.get('dims', None)
 
         if dims:
@@ -96,13 +97,13 @@ class MDSConnection(DataSource):
         except mds.MdsException:
             dim_name = name if name else 'dim_{}'.format(i)
 
-        return {dim_name: self._conn.get(dim_of, *args).data()}
+        return {dim_name: mds.Data.compile(dim_of, *args).evaluate().data()}
 
     def _get_units(self, query):
         """ Get the physical units of the specified query """
 
         try:
-            units = self._conn.get(r'units_of({})'.format(query)).data()
+            units = mds.Data.compile(r'units_of({})'.format(query)).evaluate().data()
             return {'units': units}
         except mds.MdsException:
             return {}
