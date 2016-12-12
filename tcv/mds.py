@@ -4,7 +4,7 @@ from collections import OrderedDict
 from itertools import cycle
 
 import MDSplus as mds
-import xray
+import xarray as xray
 
 from .datasource import DataSource
 

@@ -9,7 +9,7 @@ Written by Nicola Vianello
 import numpy as np
 import tcv
 import eqtools
-import xray
+import xarray as xray
 from scipy import stats
 from scipy.interpolate import UnivariateSpline
 
@@ -106,7 +106,7 @@ class FastRP(object):
         # rename with time as dimension
         iSat = iSat.rename({'dim_0': 'time'})
         # add in the attributes also the area
-        iSat.area = conn.tdi(r'\AM4').values
+        iSat['area'] = conn.tdi(r'\AM4').values
         # detrend the costant in the first part of the
         # stroke
         iSat -= iSat.where(iSat.time < iSat.time.min() +
