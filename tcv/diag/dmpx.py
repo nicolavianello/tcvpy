@@ -11,7 +11,7 @@ from scipy import io  # this is needed to load the settings of xtomo
 import numpy as np
 
 import tcv  # this is the tcv main library component
-import xray  # this is needed as tdi save into an xray
+import xarray as xray  # this is needed as tdi save into an xray
 
 
 log = logging.getLogger(__name__)  # pylint: disable=invalid-name

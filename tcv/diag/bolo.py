@@ -9,7 +9,7 @@ from scipy import signal
 from scipy import io
 import os
 import tcv
-import xray
+import xarray as xray
 
 
 class Bolo(object):
