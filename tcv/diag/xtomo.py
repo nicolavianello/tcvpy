@@ -8,7 +8,7 @@ import os
 
 import numpy as np
 import scipy.io
-import xray
+import xarray as xray
 
 import tcv
 
@@ -51,8 +51,9 @@ class XtomoCamera(object):
             los = np.atleast_1d(los)
 
         values = []
+        Channels = XtomoCamera.channels(shot, camera, los=los)
         with tcv.shot(shot) as conn:
-            for channel in XtomoCamera.channels(shot, camera, los=los):
+            for channel in Channels:
                 values.append(conn.tdi(channel, dims='time'))
 
         data = xray.concat(values, dim='los')
@@ -99,6 +100,7 @@ class XtomoCamera(object):
         with tcv.shot(shot) as conn:
             names = conn.tdi(r'\base::xtomo:array_{:03}:source'.format(camera))
 
+        conn.close()
         return names[los - 1].values
 
     @staticmethod
