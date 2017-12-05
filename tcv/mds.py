@@ -32,7 +32,7 @@ class MDSConnection(DataSource):
 #        self._conn = mds.Connection(server)
 #        self._conn.openTree(tree, shot)
         self._conn = mds.Tree(self.tree, self.shot)
-        
+
     def tdi(self, cmd, *args, **kwargs):
         """
         Execute a TDI command.
@@ -84,7 +84,9 @@ class MDSConnection(DataSource):
         attrs.update(self._get_units(query))
         attrs.update({'shot': self.shot, 'query': query})
 
-        return xray.DataArray(data, coords=coords, name=query, attrs=attrs)
+        return xray.DataArray(data, coords=coords.values(),
+                              dims=coords.keys(), name=query,
+                              attrs=attrs)
 
     def _get_dim(self, i, query, name, *args):
         """ Get i-th dimension of the specified query. """

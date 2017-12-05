@@ -4,11 +4,10 @@ from scipy import io  # this is needed to load the settings of xtomo
 import numpy as np
 import MDSplus
 import xarray as xray  # this is needed as tdi save into an xray
-import copy
 log = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
-class AXUV(object):
 
+class AXUV(object):
     def __init__(self, shot, LoS=None, trange=None):
         """
         Programs to load the calibrated data of AXUV
@@ -35,9 +34,9 @@ class AXUV(object):
         # define the shot
         self.shot = shot
         self.LoS = LoS
-        self.trange=trange
+        self.trange = trange
         if self.LoS is not None:
-            self.LoS = np.atleast_1d(self.LoS).astype('int')-1
+            self._idxLoS = np.atleast_1d(self.LoS).astype('int')-1
         # restore the geometry of the AXUV
         _pathFile = os.path.join(
             os.path.dirname(
@@ -132,17 +131,16 @@ class AXUV(object):
         # now in case we are only dealing with few LoS we limit
         # to these channels and boards
         if self.LoS is not None:
-            self.channel = self.channel[self.LoS]
-            self.boards = self.boards[self.LoS]
+            self.channel = self.channel[self._idxLoS]
+            self.boards = self.boards[self._idxLoS]
             for key in self.calibration.keys():
                 if key == 'xchord':
-                    self.calibration[key] = self.calibration[key][:, self.LoS]
+                    self.calibration[key] = self.calibration[key][:, self._idxLoS]
                 elif key == 'ychord':
-                    self.calibration[key] = self.calibration[key][:, self.LoS]
+                    self.calibration[key] = self.calibration[key][:, self._idxLoS]
                 else:
-                    self.calibration[key] = self.calibration[key][self.LoS]
-                    
-            
+                    self.calibration[key] = self.calibration[key][self._idxLoS]
+
     def _getdata(self):
         """
         Get the appropriate calibrated data
@@ -158,15 +156,20 @@ class AXUV(object):
         data = np.asarray(data)
         time = self._Tree.getNode(r'\atlas::dt196_axuv_00' +
                                   self.boards[0].astype('string')[1] +
-                                  ':CHANNEL_{:03}'.format(self.channel[0])).getDimensionAt().data()
+                                  ':CHANNEL_{:03}'.format(
+                                      self.channel[0])).getDimensionAt().data()
         if self.LoS is None:
             Data = xray.DataArray(data,
-                                  coords=[np.linspace(1, 140, 140, dtype='int'), time],
+                                  coords=[np.linspace(1, 140, 140,
+                                                      dtype='int'),
+                                          time],
                                   dims=['LoS', 'time'])
         else:
-            Data = xray.DataArray(data, coords=[self.LoS+1, time], dims=['LoS', 'time'])
-            
-        Data -= Data.where(Data.time <= -0.01).mean(dim='time')            
+            Data = xray.DataArray(data,
+                                  coords=[self.LoS, time],
+                                  dims=['LoS', 'time'])
+
+        Data -= Data.where(Data.time <= -0.01).mean(dim='time')
         self.Data = Data/0.24/self.gains/np.expand_dims(
             self.calibration['etend'], axis=1)
         for key in self.calibration.keys():
@@ -178,5 +181,5 @@ class AXUV(object):
             self.Data = self.Data.where(((Data.time >= self.trange[0]) &
                                          (Data.time <= self.trange[1])),
                                         drop=True)
-            
+
         return self.Data
