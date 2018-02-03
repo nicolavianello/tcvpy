@@ -201,7 +201,7 @@ class FastRP(object):
             iOut = np.asarray([np.nanmean(k) for k in iSliced])
             iErr = np.asarray([np.nanstd(k) for k in iSliced])
             rOut = np.asarray([np.nanmean(k) for k in rSliced])
-            data = xray.DataArray(iOut, coords={'rho': rOut})
+            data = xray.DataArray(iOut, coords=[('rho', rOut)])
             data.attrs['err'] = iErr
             data.attrs['units'] = 'A'
             # save into the data also the object for spline interpolation
@@ -242,7 +242,7 @@ class FastRP(object):
                 rrsep[i] = eq.rz2rmid(x, 0, t) - eq.getRmidOutSpline()(t)
             _id = np.argsort(rho)
             data = xray.DataArray(out.values[_id],
-                                  coords={'rho': rho[_id]})
+                                  coords=[('rho', rho[_id])])
             data.attrs['err'] = out.err[_id]
             data.attrs['R'] = out.R.values[_id]
             data.attrs['Rrsep'] = rrsep[_id]
@@ -410,7 +410,7 @@ class FastRP(object):
                     rho[i] = eq.rz2psinorm(x, 0, t, sqrt=True)
                 _id = np.argsort(rho)
                 out2 = xray.DataArray(out.values[_id],
-                                      coords={'rho': rho[_id]})
+                                      coords=[('rho', rho[_id])])
                 out2.attrs['err'] = out.err[_id]
                 out2.attrs['R'] = out.R.values[_id]
                 dout[n] = out2
@@ -480,7 +480,7 @@ class FastRP(object):
                     rho[i] = eq.rz2psinorm(R, 0, t, sqrt=True)
                 except:
                     rho[i] = np.nan
-            data = xray.DataArray(rho, coords={'time': rN.time.values})
+            data = xray.DataArray(rho, coords=[('time', rN.time.values)])
 
         return data
 
@@ -543,7 +543,7 @@ class FastRP(object):
                              eq.getRmidOutSpline()(t)
                 except:
                     rho[i] = np.nan
-            data = xray.DataArray(rho, coords={'time': rN.time.values})
+            data = xray.DataArray(rho, coords=[('time', rN.time.values)])
 
         return data
 
@@ -622,7 +622,7 @@ class FastRP(object):
             data = xray.DataArray(rOut, coords=[np.append(0, r), tN],
                                   dims=['r', 'time'])
         else:
-            data = xray.DataArray(rN, coords={'time': tN})
+            data = xray.DataArray(rN, coords=[('time', tN)])
 
         conn.close
         return data
@@ -643,7 +643,7 @@ class FastRP(object):
         yO = np.asarray([np.nanmean(k) for k in yS])
         xO = np.asarray([np.nanmean(k) for k in xS])
         eO = np.asarray([np.nanstd(k) for k in yS])
-        data = xray.DataArray(yO, coords={'rho': xO})
+        data = xray.DataArray(yO, coords=[('rho', xO)])
         data.attrs['err'] = eO
         return data
 
@@ -664,7 +664,7 @@ class FastRP(object):
         xO = np.asarray([np.nanmean(k) for k in xS])
         eO = np.asarray([np.nanstd(k) for k in yS])
         tO = np.asarray([np.nanmean(k) for k in tS])
-        data = xray.DataArray(yO, coords={'R': xO})
+        data = xray.DataArray(yO, coords=[('R', xO)])
         data.attrs['err'] = eO
         data.attrs['time'] = tO
         return data
@@ -749,7 +749,7 @@ class FastRP(object):
         rho = np.zeros(npoint)
         for r, t, i in zip(rO, tO, range(npoint)):
             rho[i] = eq.rz2psinorm(r, 0, t, sqrt=True)
-        data = xray.DataArray(tau, coords={'rho': rho})
+        data = xray.DataArray(tau, coords=[('rho', rho)])
         data.attrs['rms'] = rms
         data.attrs['Flat'] = Fl
         data.attrs['Skew'] = Sk
