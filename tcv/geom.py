@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 from matplotlib.ticker import MaxNLocator
-
+import MDSplus
 import tcv
 
 
@@ -40,11 +40,11 @@ class StaticParameters(object):
     @classmethod
     def from_tree(cls, shotnum):
         """ Read the vessel's parameters from the static MDS nodes """
-
+        Tree = MDSplus.Tree('tcv_shot',shotnum)
         vessel = {}
-        with tcv.shot(shotnum) as conn:
-            for key, query in cls._vessel_nodes().iteritems():
-                vessel[key] = conn.tdi(query).values
+#        with tcv.shot(shotnum) as conn:
+        for key, query in cls._vessel_nodes().iteritems():
+            vessel[key] = MDSplus.Data.execute(query).getvalue().data()
 
         tiles = {}
         tiles['R'] = np.array([
